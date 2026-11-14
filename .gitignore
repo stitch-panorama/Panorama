@@ -1,0 +1,16 @@
+# environment and editor
+.venv/
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# images: large phone photos and third-party downloads stay out of git
+data/*
+!data/README.md
+
+# generated arrays
+*.npy
