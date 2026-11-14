@@ -2,10 +2,16 @@ import cv2
 import numpy as np
 from stitcher.homography import ransac_homography
 from stitcher.warp import canvas_bounds, warp_to_canvas, composite_average
-from stitcher.blend import feather_blend
+from stitcher.blend import feather_blend, estimate_gain
+
+import argparse
+p = argparse.ArgumentParser()
+p.add_argument("--gain", type=float, default=1.0)
+args = p.parse_args()
 
 c = cv2.imread("data/synthetic/c.jpg")
 d = cv2.imread("data/synthetic/d.jpg")
+d = np.clip(d.astype(np.float32) * args.gain, 0, 255).astype(np.uint8)
 
 # same matching + RANSAC as before (H maps c -> d)
 sift = cv2.SIFT_create()
@@ -42,9 +48,16 @@ cover = mc | md_clean      # same set of pixels for every variant
 avg_raw = composite_average(rc, mc, rd, md)
 avg_clean = composite_average(rc, mc, rd, md_clean)
 feather = feather_blend(rc, mc, rd, md_clean)
+g = estimate_gain(rc, mc, rd, md_clean)
+rd_comp = np.clip(rd * g, 0, 255)
+feather_comp = feather_blend(rc, mc, rd_comp, md_clean)
+print("estimated gain per channel:", np.round(g, 3))
+print("  feather + gain compensation:", round(error_vs_source(feather_comp, cover), 2))
+cv2.imwrite(f"results/blend_feather_comp_gain{args.gain}.jpg", feather_comp)
 
 print("mean abs error vs source photo (0-255):")
 print("  average, raw masks:         ", round(error_vs_source(avg_raw, cover), 2))
 print("  average, border-free masks: ", round(error_vs_source(avg_clean, cover), 2))
 print("  feather, border-free masks: ", round(error_vs_source(feather, cover), 2))
-cv2.imwrite("results/blend_feather.jpg", feather)
+cv2.imwrite(f"results/blend_feather_gain{args.gain}.jpg", feather)
+cv2.imwrite(f"results/blend_average_gain{args.gain}.jpg", avg_clean)
