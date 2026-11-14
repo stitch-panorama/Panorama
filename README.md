@@ -10,8 +10,8 @@ SIFT keypoints -> ratio-test matching -> RANSAC homography -> warping -> blendin
 - [x] Feature matching
 - [x] Homography from 4 point pairs (DLT, normalized)
 - [x] RANSAC (matches OpenCV on test data)
-- [ ] Warping and canvas
-- [ ] Blending
+- [x] Warping and canvas
+- [x] Blending
 - [ ] Multi-image stitching
 - [ ] Interface and evaluation
 
