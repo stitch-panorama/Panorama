@@ -24,3 +24,23 @@ def estimate_gain(c1, m1, c2, m2):
     if both.sum() < 100:
         return np.ones(3)
     return c1[both].mean(axis=0) / np.maximum(c2[both].mean(axis=0), 1e-6)
+
+def compensate_chain(canvases, masks, ref):
+    """Match exposure outward from the reference image, one neighbor at a time."""
+    out = [c.astype(np.float32) for c in canvases]
+    for k in range(ref + 1, len(out)):
+        out[k] = out[k] * estimate_gain(out[k - 1], masks[k - 1], out[k], masks[k])
+    for k in range(ref - 1, -1, -1):
+        out[k] = out[k] * estimate_gain(out[k + 1], masks[k + 1], out[k], masks[k])
+    return out
+
+
+def feather_blend_n(canvases, masks):
+    """Distance-weighted blend of any number of canvases."""
+    num, den = 0, 0
+    for c, m in zip(canvases, masks):
+        w = feather_weights(m)[..., None]
+        num = num + w * c
+        den = den + w
+    out = num / np.maximum(den, 1e-6)
+    return np.rint(np.clip(out, 0, 255)).astype(np.uint8)

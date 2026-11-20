@@ -3,7 +3,10 @@ import numpy as np
 def normalize(pts):
     # shift points to zero mean, scale so average distance is sqrt(2)
     c = pts.mean(axis=0)
-    s = np.sqrt(2) / np.mean(np.linalg.norm(pts - c, axis=1))
+    mean_dist = np.mean(np.linalg.norm(pts - c, axis=1))
+    if mean_dist < 1e-9:
+        raise np.linalg.LinAlgError("degenerate points")
+    s = np.sqrt(2) / mean_dist
     T = np.array([[s, 0, -s * c[0]],
                   [0, s, -s * c[1]],
                   [0, 0, 1]])
@@ -18,7 +21,10 @@ def estimate_homography(src, dst):
     for (x, y), (xp, yp) in zip(src_n, dst_n):
         A.append([-x, -y, -1, 0, 0, 0, xp * x, xp * y, xp])
         A.append([0, 0, 0, -x, -y, -1, yp * x, yp * y, yp])
-    _, _, Vt = np.linalg.svd(np.array(A))   # keep full_matrices=True (the default)
+    A = np.array(A)
+    # 4 points give an 8x9 system and need the full SVD to expose the null vector;
+    # 5 or more points give at least 10 rows, so the cheap thin SVD is enough.
+    _, _, Vt = np.linalg.svd(A, full_matrices=(len(src) < 5))
     Hn = Vt[-1].reshape(3, 3)
     H = np.linalg.inv(T2) @ Hn @ T1          # undo the normalization
     return H / H[2, 2]

@@ -65,3 +65,37 @@ def composite_average(c1, m1, c2, m2):
     out[m2 & ~m1] = c2[m2 & ~m1]
     out[both] = 0.5 * c1[both] + 0.5 * c2[both]
     return out.astype(np.uint8)
+
+def canvas_bounds_n(shapes, ref_to):
+    """Bounding box of all images in the reference frame: (xmin, ymin, width, height),
+    or None if the geometry is implausible."""
+    pts = []
+    for shape, H in zip(shapes, ref_to):
+        h, w = shape[:2]
+        corners = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], float)
+        with np.errstate(all="ignore"):
+            pts.append(apply_homography(np.linalg.inv(H), corners))
+    allc = np.vstack(pts)
+    if not np.isfinite(allc).all() or np.abs(allc).max() > 1e5:
+        return None
+    xmin, ymin = np.floor(allc.min(axis=0)).astype(int)
+    xmax, ymax = np.ceil(allc.max(axis=0)).astype(int)
+    return int(xmin), int(ymin), int(xmax - xmin + 1), int(ymax - ymin + 1)
+
+
+def warp_all(images, ref_to):
+    """Warp every image onto one canvas in the reference frame.
+    Returns a list of (canvas, mask), one per image."""
+    xmin, ymin, W, Hc = canvas_bounds_n([im.shape for im in images], ref_to)
+    u, v = np.meshgrid(np.arange(W), np.arange(Hc))
+    xr = (u + xmin).astype(float)
+    yr = (v + ymin).astype(float)
+    pts = np.stack([xr.ravel(), yr.ravel(), np.ones(xr.size)])
+    out = []
+    for img, H in zip(images, ref_to):
+        with np.errstate(all="ignore"):
+            q = H @ pts
+            xs = (q[0] / q[2]).reshape(xr.shape)
+            ys = (q[1] / q[2]).reshape(xr.shape)
+        out.append(bilinear_sample(img, xs, ys))
+    return out
