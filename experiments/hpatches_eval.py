@@ -17,6 +17,9 @@ ap.add_argument("--max-width", type=int, default=1200)
 ap.add_argument("--every", type=int, default=1,
                 help="use every N-th sequence (e.g. 12 for a quick test mixing i_ and v_)")
 ap.add_argument("--out", default="results/hpatches_baseline.csv")
+ap.add_argument("--detector", choices=["sift", "orb"], default="sift")
+ap.add_argument("--split", choices=["all", "tune", "test"], default="all",
+                help="tune = even-numbered sequences, test = odd-numbered ones")
 args = ap.parse_args()
 
 METHODS = ["ours", "opencv", "lstsq"]
@@ -48,6 +51,10 @@ def corner_error(H_est, H_gt, w, h):
 
 
 seqs = sorted(d for d in os.listdir(args.root) if os.path.isdir(os.path.join(args.root, d)))
+if args.split == "tune":
+    seqs = seqs[0::2]
+elif args.split == "test":
+    seqs = seqs[1::2]
 seqs = seqs[::args.every]
 
 rows = []
@@ -55,12 +62,12 @@ for si, seq in enumerate(seqs):
     d = os.path.join(args.root, seq)
     img1, S1 = load(os.path.join(d, "1.ppm"))
     h, w = img1.shape[:2]
-    pts1, des1 = detect_and_describe(img1)
+    pts1, des1 = detect_and_describe(img1, args.detector)
 
     for k in range(2, 7):
         imgk, Sk = load(os.path.join(d, f"{k}.ppm"))
         H_gt = Sk @ np.loadtxt(os.path.join(d, f"H_1_{k}")) @ np.linalg.inv(S1)
-        ptsk, desk = detect_and_describe(imgk)
+        ptsk, desk = detect_and_describe(imgk, args.detector)
         idx = match_ratio_test(des1, desk, args.ratio)
         n = len(idx)
 

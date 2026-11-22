@@ -9,6 +9,7 @@ from stitcher.homography import ransac_homography
 from stitcher.chain import chain_homographies
 from stitcher.warp import canvas_bounds_n, warp_all
 from stitcher.blend import compensate_chain, feather_blend_n
+from stitcher.cylinder import cylindrical_warp, estimate_focal_from_pairs
 
 
 @dataclass
@@ -50,6 +51,7 @@ def align_images(images, ratio=0.7, thresh=3.0):
         if H is None:
             return None, None, pair_stats, f"{label}: no consistent alignment found."
         st["inliers"] = int(mask.sum())
+        st["H"] = H
         if not is_stitchable(len(idx), st["inliers"]):
             return None, None, pair_stats, (
                 f"{label} do not appear to overlap enough, or the scene is too hard "
@@ -59,20 +61,50 @@ def align_images(images, ratio=0.7, thresh=3.0):
     return chain_homographies(pairwise, ref), ref, pair_stats, ""
 
 
-def stitch(images, ratio=0.7, thresh=3.0, max_width=1200):
+def _canvas_ok(images, ref_to):
+    """Canvas bounds if the layout is sane, else None. A flat layout of a very wide
+    panorama stretches without limit, which shows up as an absurdly wide canvas."""
+    bounds = canvas_bounds_n([im.shape for im in images], ref_to)
+    if bounds is None:
+        return None
+    if bounds[2] * bounds[3] > 40_000_000 or bounds[2] > 2 * sum(im.shape[1] for im in images):
+        return None
+    return bounds
+
+
+def stitch(images, ratio=0.7, thresh=3.0, max_width=1200, projection="auto", focal_ratio=None):
+    """projection: 'planar', 'cylindrical', or 'auto' (planar unless it is badly stretched).
+    focal_ratio: focal length as a multiple of the image width; estimated if None."""
     t0 = time.time()
     if len(images) < 2:
         return StitchResult(None, False, "Need at least two images.", {})
     images = [_shrink(im, max_width) for im in images]
 
     ref_to, ref, pair_stats, err = align_images(images, ratio, thresh)
-    stats = {"pairs": pair_stats, "reference": ref}
+    stats = {"pairs": pair_stats, "reference": ref, "projection": "planar"}
     if ref_to is None:
         return StitchResult(None, False, err, stats)
 
-    bounds = canvas_bounds_n([im.shape for im in images], ref_to)
-    if bounds is None or bounds[2] * bounds[3] > 40_000_000:
-        return StitchResult(None, False, "Alignment looks implausible (canvas too large).", stats)
+    bounds = _canvas_ok(images, ref_to) if projection in ("auto", "planar") else None
+    if bounds is None:
+        if projection == "planar":
+            return StitchResult(None, False, "Alignment looks implausible (canvas too large); "
+                                "try cylindrical projection.", stats)
+        h0, w0 = images[0].shape[:2]
+        if focal_ratio:
+            f = focal_ratio * w0
+        else:
+            f = estimate_focal_from_pairs([p["H"] for p in pair_stats], w0, h0) or float(w0)
+        images = [cylindrical_warp(im, f) for im in images]
+        ref_to, ref, pair_stats, err = align_images(images, ratio, thresh)
+        stats.update({"pairs": pair_stats, "reference": ref,
+                      "projection": "cylindrical", "focal_px": round(f, 1)})
+        if ref_to is None:
+            return StitchResult(None, False, err, stats)
+        bounds = _canvas_ok(images, ref_to)
+        if bounds is None:
+            return StitchResult(None, False,
+                                "Alignment looks implausible even with cylindrical projection.", stats)
 
     layers = warp_all(images, ref_to)
     canvases = [c for c, _ in layers]

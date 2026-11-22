@@ -1,0 +1,1 @@
+Swayambhunath Area 01 360.jpg by Acharya Bipin, CC BY-SA 4.0, https://commons.wikimedia.org/wiki/File:Swayambhunath_Area_01_360.jpg. Used to render pinhole views (yaw 0–150°, 30° step, 60° field of view) and a stitched panorama; derived images are also CC BY-SA 4.0.
